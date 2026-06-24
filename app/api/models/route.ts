@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const res = await fetch("https://openrouter.ai/api/v1/models", {
     // If noCache, bypass caching entirely; else allow short revalidation window.
     cache: noCache ? "no-store" : "force-cache",
-    next: noCache ? undefined : { revalidate: 60 * 30 }, // 30 min
+    next: noCache ? undefined : { revalidate: 60 * 60 * 24 }, // 24h
     headers: { "accept": "application/json" },
   });
 

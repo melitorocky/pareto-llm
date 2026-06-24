@@ -23,8 +23,11 @@ type Filters = {
   onlyHighlighted: boolean;
 };
 
-async function fetchModels(): Promise<NormalizedModel[]> {
-  const res = await fetch("/api/models");
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+async function fetchModels(noCache = false): Promise<NormalizedModel[]> {
+  const url = noCache ? "/api/models?noCache=1" : "/api/models";
+  const res = await fetch(url);
   if (!res.ok) throw new Error("Errore caricamento modelli");
   const json = (await res.json()) as OpenRouterModelsResponse;
   return (json.data || []).map(normalizeModel);
@@ -45,15 +48,17 @@ export default function DashboardPage() {
     refetch,
   } = useQuery({
     queryKey: ["models"],
-    queryFn: fetchModels,
-    staleTime: 1000 * 60 * 10,
+    queryFn: () => fetchModels(false),
+    staleTime: DAY_MS,
+    gcTime: DAY_MS,
   });
 
-  const { data: intelligenceMap = {} } = useQuery({
+  const { data: intelligenceMap = {}, refetch: refetchIntelligence } = useQuery({
     queryKey: ["intelligence"],
     queryFn: fetchIntelligence,
-    staleTime: 1000 * 60 * 60,  // 1h client-side stale (server caches 24h)
-    retry: false,               // don't retry if the external APIs are unavailable
+    staleTime: DAY_MS,
+    gcTime: DAY_MS,
+    retry: false,
   });
 
   const [cq, setCq] = usePersistentState<number>("cqBalance", 0.5);
@@ -112,7 +117,11 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-semibold mr-auto dark:text-zinc-100">Pareto LLM</h1>
           <ThemeToggle />
           <button
-            onClick={() => refetch()}
+            onClick={async () => {
+              // Bust the server-side Next.js fetch cache, then update TanStack state
+              await fetchModels(true);
+              await Promise.all([refetch(), refetchIntelligence()]);
+            }}
             className="px-3 py-2 rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm hover:opacity-90"
           >
             Aggiorna
