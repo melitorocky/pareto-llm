@@ -49,18 +49,20 @@ function getMetricValue(
 }
 
 function formatAxisValue(value: number, metric: MetricKey): string {
-  if (!isFinite(value)) return String(value);
+  if (!isFinite(value)) return "";
   switch (metric) {
     case "inPerM":
     case "outPerM":
     case "costCombined":
-      if (value < 0.001) return `$${value.toFixed(5)}`;
-      if (value < 0.1)   return `$${value.toFixed(3)}`;
-      if (value < 1)     return `$${value.toFixed(2)}`;
-      if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
-      return `$${value.toFixed(1)}`;
+      if (value === 0)    return "$0";
+      if (value < 0.001)  return `$${value.toExponential(0)}`;  // $1e-4
+      if (value < 0.01)   return `$${value.toFixed(3)}`;        // $0.003
+      if (value < 0.1)    return `$${value.toFixed(2)}`;        // $0.03
+      if (value < 1)      return `$${value.toFixed(1)}`;        // $0.3
+      if (value >= 1000)  return `$${(value / 1000).toFixed(0)}K`;
+      return `$${value.toFixed(0)}`;                             // $5
     case "context":
-      if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+      if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(0)}M`;
       if (value >= 1000)      return `${(value / 1000).toFixed(0)}K`;
       return String(value);
     case "aaLatency":
@@ -220,9 +222,8 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
               scale={xOpt.scale}
               domain={["auto", "auto"]}
               tickFormatter={v => formatAxisValue(Number(v), xMetric)}
-              tick={{ fontSize: 11, fill: "#6b7280", angle: -40, textAnchor: "end" }}
-              interval={0}
-              tickCount={Math.max(2, Math.min(5, Math.floor(w / 160)))}
+              tick={{ fontSize: 11, fill: "#6b7280", angle: -35, textAnchor: "end" }}
+              tickCount={Math.max(2, Math.min(4, Math.floor(w / 220)))}
             >
               <Label value={xOpt.label} position="bottom" offset={28} style={{ fontSize: 12, fill: "#6b7280" }} />
             </XAxis>
