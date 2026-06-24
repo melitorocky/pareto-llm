@@ -1,44 +1,38 @@
 import { revalidateTag } from "next/cache";
 
-async function probe(url: string, headers: Record<string, string>) {
-  try {
-    const res = await fetch(url, {
-      headers: { accept: "application/json", ...headers },
-      cache: "no-store",
-    });
-    const body = await res.json().catch(() => null);
-    return { status: res.status, body };
-  } catch (e) {
-    return { status: 0, body: String(e) };
-  }
-}
-
+// Utility endpoint: invalidates the 24h intelligence cache and reports AA API status.
+// Useful after changing ARTIFICIAL_ANALYSIS_API_KEY in Vercel env vars.
 export async function GET() {
   const apiKey = process.env.ARTIFICIAL_ANALYSIS_API_KEY ?? "";
-  if (!apiKey) return Response.json({ hasKey: false });
+  const hasKey = !!apiKey;
 
-  const h = { "x-api-key": apiKey };
-  const baseUrl = "https://artificialanalysis.ai/api";
-
-  // Try different endpoint paths with x-api-key (the format that gave 403, not 401)
-  const [v2lang, v2models, v1lang, v1models, root] = await Promise.all([
-    probe(`${baseUrl}/v2/language/models`, h),
-    probe(`${baseUrl}/v2/models`, h),
-    probe(`${baseUrl}/v1/language/models`, h),
-    probe(`${baseUrl}/v1/models`, h),
-    probe(`${baseUrl}/models`, h),
-  ]);
+  let aaStatus = 0;
+  let aaBody: unknown = null;
+  if (hasKey) {
+    try {
+      const res = await fetch("https://artificialanalysis.ai/api/v2/language/models", {
+        headers: { accept: "application/json", "x-api-key": apiKey },
+        cache: "no-store",
+      });
+      aaStatus = res.status;
+      aaBody = await res.json().catch(() => null);
+    } catch (e) {
+      aaBody = String(e);
+    }
+  }
 
   revalidateTag("intelligence", { expire: 0 });
 
+  const isPro = aaStatus === 200;
   return Response.json({
-    keyPrefix: apiKey.slice(0, 8) + "…",
-    endpoints: {
-      "/api/v2/language/models": { status: v2lang.status, body: v2lang.body },
-      "/api/v2/models":          { status: v2models.status, body: v2models.body },
-      "/api/v1/language/models": { status: v1lang.status, body: v1lang.body },
-      "/api/v1/models":          { status: v1models.status, body: v1models.body },
-      "/api/models":             { status: root.status, body: root.body },
-    },
+    hasKey,
+    keyPrefix: hasKey ? apiKey.slice(0, 8) + "…" : null,
+    aaStatus,
+    aaBody: isPro ? "(ok — models loaded)" : aaBody,
+    status: isPro
+      ? "AA Pro active — cache invalidated, reload /api/intelligence to rebuild."
+      : !hasKey
+      ? "No API key set. Arena ELO still works without a key."
+      : "AA requires a Pro subscription. Arena ELO still works without it.",
   });
 }

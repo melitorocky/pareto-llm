@@ -22,6 +22,11 @@ async function fetchArtificialAnalysis(): Promise<AAModel[]> {
     headers,
     cache: "no-store",
   });
+  if (res.status === 403) {
+    // Free tier doesn't include language models list — requires Pro subscription
+    console.warn("[intelligence] AA API 403: upgrade to Pro to enable AA scores");
+    return [];
+  }
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data) ? data : (data.models ?? data.data ?? []);
