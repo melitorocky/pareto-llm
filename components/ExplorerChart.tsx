@@ -191,6 +191,20 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
     return buildStaircase(paretoPoints);
   }, [points, paretoIds]);
 
+  const xTicks = useMemo(() => {
+    const vals = points.map(p => p.x).filter(v => isFinite(v) && (xOpt.scale !== "log" || v > 0));
+    if (vals.length < 2) return undefined;
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    if (min === max) return [min];
+    const N = 10;
+    if (xOpt.scale === "log") {
+      const l0 = Math.log10(min), l1 = Math.log10(max);
+      return Array.from({ length: N }, (_, i) => Math.pow(10, l0 + (i / (N - 1)) * (l1 - l0)));
+    }
+    return Array.from({ length: N }, (_, i) => min + (i / (N - 1)) * (max - min));
+  }, [points, xOpt.scale]);
+
   const emptyMsg = points.length === 0 ? (
     <div className="flex items-center justify-center text-sm text-zinc-400" style={{ height: h }}>
       Nessun dato disponibile per questa combinazione di metriche.
@@ -223,7 +237,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
               domain={["auto", "auto"]}
               tickFormatter={v => formatAxisValue(Number(v), xMetric)}
               tick={{ fontSize: 11, fill: "#6b7280", angle: -35, textAnchor: "end" }}
-              tickCount={5}
+              ticks={xTicks}
             >
               <Label value={xOpt.label} position="bottom" offset={28} style={{ fontSize: 12, fill: "#6b7280" }} />
             </XAxis>
