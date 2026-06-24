@@ -33,6 +33,7 @@ export function lookupIntelligence(
 export type MetricKey =
   | "inPerM"
   | "outPerM"
+  | "costCombined"
   | "context"
   | "aaScore"
   | "arenaElo"
@@ -46,9 +47,10 @@ export const METRIC_OPTIONS: {
   scale: "log" | "linear";
   higherIsBetter: boolean;
 }[] = [
-  { key: "inPerM",    label: "$/1M Input",    unit: "$",     scale: "log",    higherIsBetter: false },
-  { key: "outPerM",   label: "$/1M Output",   unit: "$",     scale: "log",    higherIsBetter: false },
-  { key: "context",   label: "Contesto",      unit: "tok",   scale: "log",    higherIsBetter: true },
+  { key: "inPerM",       label: "$/1M Input",        unit: "$",     scale: "log",    higherIsBetter: false },
+  { key: "outPerM",      label: "$/1M Output",       unit: "$",     scale: "log",    higherIsBetter: false },
+  { key: "costCombined", label: "Costo combinato",   unit: "$",     scale: "log",    higherIsBetter: false },
+  { key: "context",      label: "Contesto",          unit: "tok",   scale: "log",    higherIsBetter: true },
   { key: "aaScore",   label: "AA Intelligence", unit: "pts", scale: "linear", higherIsBetter: true },
   { key: "arenaElo",  label: "Arena ELO",     unit: "pts",   scale: "linear", higherIsBetter: true },
   { key: "aaSpeed",   label: "Velocità",      unit: "tok/s", scale: "linear", higherIsBetter: true },

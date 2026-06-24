@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ScatterChart, XAxis, YAxis, Tooltip, Scatter, Legend, ZAxis, Label,
+  ComposedChart, XAxis, YAxis, Tooltip, Scatter, Legend, ZAxis, Label, Line,
 } from "recharts";
 import { NormalizedModel } from "@/lib/types";
 import { IntelligenceMap, METRIC_OPTIONS, MetricKey, lookupIntelligence } from "@/lib/intelligence";
@@ -33,6 +33,13 @@ function getMetricValue(
   switch (metric) {
     case "inPerM":    return model.inPerM;
     case "outPerM":   return model.outPerM;
+    case "costCombined": {
+      const inp = model.inPerM;
+      const out = model.outPerM;
+      if (inp == null || out == null || inp < 0 || out < 0) return null;
+      if (inp === 0 || out === 0) return 0;
+      return Math.sqrt(inp * out);
+    }
     case "context":   return model.context;
     case "aaScore":   return intel?.aaScore ?? null;
     case "arenaElo":  return intel?.arenaElo ?? null;
@@ -46,9 +53,12 @@ function formatAxisValue(value: number, metric: MetricKey): string {
   switch (metric) {
     case "inPerM":
     case "outPerM":
-      if (value < 1)  return `$${value}`;
+    case "costCombined":
+      if (value < 0.001) return `$${value.toFixed(5)}`;
+      if (value < 0.1)   return `$${value.toFixed(3)}`;
+      if (value < 1)     return `$${value.toFixed(2)}`;
       if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
-      return `$${value.toFixed(0)}`;
+      return `$${value.toFixed(1)}`;
     case "context":
       if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
       if (value >= 1000)      return `${(value / 1000).toFixed(0)}K`;
@@ -60,6 +70,41 @@ function formatAxisValue(value: number, metric: MetricKey): string {
     default:
       return value.toFixed(0);
   }
+}
+
+function computeParetoFront(
+  points: Point[],
+  xHigherIsBetter: boolean,
+  yHigherIsBetter: boolean
+): Set<string> {
+  const dominated = new Set<string>();
+  for (const a of points) {
+    if (dominated.has(a.id)) continue;
+    for (const b of points) {
+      if (a.id === b.id || dominated.has(b.id)) continue;
+      // Does a dominate b?
+      const aGeqX = xHigherIsBetter ? a.x >= b.x : a.x <= b.x;
+      const aGeqY = yHigherIsBetter ? a.y >= b.y : a.y <= b.y;
+      const aGtX  = xHigherIsBetter ? a.x >  b.x : a.x <  b.x;
+      const aGtY  = yHigherIsBetter ? a.y >  b.y : a.y <  b.y;
+      if (aGeqX && aGeqY && (aGtX || aGtY)) dominated.add(b.id);
+    }
+  }
+  return new Set(points.filter(p => !dominated.has(p.id)).map(p => p.id));
+}
+
+// Builds the staircase polyline for the Pareto frontier, sorted by X ascending.
+function buildStaircase(paretoPoints: Point[]): { x: number; y: number }[] {
+  if (paretoPoints.length === 0) return [];
+  const sorted = [...paretoPoints].sort((a, b) => a.x - b.x);
+  const line: { x: number; y: number }[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    line.push({ x: sorted[i].x, y: sorted[i].y });
+    if (i < sorted.length - 1) {
+      line.push({ x: sorted[i + 1].x, y: sorted[i].y });
+    }
+  }
+  return line;
 }
 
 function MetricSelect({
@@ -86,8 +131,8 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
   const [w, setW] = useState(0);
   const h = 360;
 
-  const [xMetric, setXMetric] = useState<MetricKey>("inPerM");
-  const [yMetric, setYMetric] = useState<MetricKey>("aaScore");
+  const [xMetric, setXMetric] = useState<MetricKey>("costCombined");
+  const [yMetric, setYMetric] = useState<MetricKey>("context");
 
   useEffect(() => {
     if (!ref.current) return;
@@ -134,6 +179,16 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
     [points]
   );
 
+  const paretoIds = useMemo(
+    () => computeParetoFront(points, xOpt.higherIsBetter, yOpt.higherIsBetter),
+    [points, xOpt.higherIsBetter, yOpt.higherIsBetter]
+  );
+
+  const staircaseLine = useMemo(() => {
+    const paretoPoints = points.filter(p => paretoIds.has(p.id));
+    return buildStaircase(paretoPoints);
+  }, [points, paretoIds]);
+
   const emptyMsg = points.length === 0 ? (
     <div className="flex items-center justify-center text-sm text-zinc-400" style={{ height: h }}>
       Nessun dato disponibile per questa combinazione di metriche.
@@ -153,7 +208,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
       <div ref={ref} className="w-full min-w-0" style={{ height: h }}>
         {emptyMsg}
         {!emptyMsg && w > 0 && (
-          <ScatterChart
+          <ComposedChart
             width={w}
             height={h}
             margin={{ top: 10, right: 20, bottom: 55, left: 70 }}
@@ -224,7 +279,22 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
                 style={{ cursor: onSelectModel ? "pointer" : "default" }}
               />
             )}
-          </ScatterChart>
+            {staircaseLine.length >= 2 && (
+              <Line
+                data={staircaseLine}
+                dataKey="y"
+                dot={false}
+                activeDot={false}
+                stroke="#ef4444"
+                strokeWidth={1.5}
+                strokeDasharray="5 3"
+                strokeOpacity={0.65}
+                isAnimationActive={false}
+                name="Frontiera Pareto"
+                legendType="plainline"
+              />
+            )}
+          </ComposedChart>
         )}
         {!emptyMsg && w === 0 && <div style={{ height: h }} />}
       </div>
