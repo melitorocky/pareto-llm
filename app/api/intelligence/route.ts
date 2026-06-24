@@ -27,46 +27,32 @@ async function fetchArtificialAnalysis(): Promise<AAModel[]> {
   return Array.isArray(data) ? data : (data.models ?? data.data ?? []);
 }
 
-// ── Arena ELO (LMSYS Chatbot Arena via HuggingFace dataset) ───────────────────
+// ── Arena ELO (lmarena-ai/leaderboard-dataset on HuggingFace) ─────────────────
 
 type ArenaRow = {
-  key?: string | null;
-  Model?: string | null;
-  model?: string | null;
-  "Arena Elo"?: number | null;
-  elo_rating?: number | null;
-  rating?: number | null;
-  Rank?: number | null;
-  rank?: number | null;
+  model_name: string;
+  rating: number;
+  rank: number;
+  category: string;
 };
 
+async function fetchArenaEloPage(offset: number): Promise<ArenaRow[]> {
+  const url = `https://datasets-server.huggingface.co/rows?dataset=lmarena-ai%2Fleaderboard-dataset&config=text&split=latest&offset=${offset}&length=100`;
+  const res = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" });
+  if (!res.ok) return [];
+  const json = await res.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (json.rows ?? []).map((r: any) => r.row as ArenaRow);
+}
+
 async function fetchArenaElo(): Promise<ArenaRow[]> {
-  // Primary: HuggingFace datasets-server (public, no auth needed)
-  try {
-    const url =
-      "https://datasets-server.huggingface.co/rows?dataset=lmarena-ai%2Fchatbot-arena-leaderboard&config=default&split=train&offset=0&length=500";
-    const res = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" });
-    if (res.ok) {
-      const json = await res.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows: ArenaRow[] = (json.rows ?? []).map((r: any) => r.row as ArenaRow);
-      if (rows.length > 0) return rows;
-    }
-  } catch {}
-
-  // Fallback: try lmarena.ai public API
-  try {
-    const res = await fetch("https://lmarena.ai/api/leaderboard", {
-      headers: { accept: "application/json" },
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return Array.isArray(data) ? data : (data.models ?? data.data ?? []);
-    }
-  } catch {}
-
-  return [];
+  // "overall" category rows appear first in the dataset (rows 0–~590).
+  // Fetch 6 pages in parallel to cover all overall-ranked models.
+  const offsets = [0, 100, 200, 300, 400, 500];
+  const pages = await Promise.all(offsets.map(fetchArenaEloPage));
+  const all = pages.flat();
+  // Keep only "overall" category — one entry per model, most recent ranking
+  return all.filter(r => r.category === "overall");
 }
 
 // ── Normalization ──────────────────────────────────────────────────────────────
@@ -112,14 +98,21 @@ async function buildMap(): Promise<IntelligenceMap> {
   }
 
   for (const r of arenaRows) {
-    const key = (r.key ?? r.Model ?? r.model ?? "").toLowerCase();
-    if (!key) continue;
+    const name = (r.model_name ?? "").toLowerCase().trim();
+    if (!name) continue;
     const data: Partial<IntelligenceData> = {
-      arenaElo: r["Arena Elo"] ?? r.elo_rating ?? r.rating ?? null,
-      arenaRank: r.Rank ?? r.rank ?? null,
+      arenaElo: r.rating ?? null,
+      arenaRank: r.rank ?? null,
     };
-    set(key, data);
-    set(slugify(key), data);
+    set(name, data);
+    set(slugify(name), data);
+    // Also store "-thinking" suffix as ":thinking" to match OpenRouter IDs
+    // e.g. "claude-opus-4-6-thinking" → also stored as "claude-opus-4-6:thinking"
+    if (name.endsWith("-thinking")) {
+      const withColon = name.slice(0, -"-thinking".length) + ":thinking";
+      set(withColon, data);
+      set(slugify(withColon), data);
+    }
   }
 
   return map;

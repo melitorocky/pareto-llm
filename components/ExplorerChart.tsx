@@ -286,9 +286,9 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
                 dot={false}
                 activeDot={false}
                 stroke="#ef4444"
-                strokeWidth={1.5}
-                strokeDasharray="5 3"
-                strokeOpacity={0.65}
+                strokeWidth={2.5}
+                strokeDasharray="6 3"
+                strokeOpacity={0.8}
                 isAnimationActive={false}
                 name="Frontiera Pareto"
                 legendType="plainline"

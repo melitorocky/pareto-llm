@@ -78,47 +78,41 @@ export default function ModelCard({ model, intelligence, onClose }: Props) {
             </p>
           )}
 
-          {/* Intelligence scores */}
-          {(intelligence?.aaScore != null || intelligence?.arenaElo != null) && (
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
-                Punteggi Intelligenza
-              </h3>
-              <div className="grid grid-cols-2 gap-3 rounded-lg bg-zinc-50 dark:bg-zinc-800 p-3">
-                {intelligence.aaScore != null && (
-                  <div className="flex flex-col">
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">AA Intelligence</span>
-                    <span className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
-                      {intelligence.aaScore.toFixed(1)}
-                    </span>
-                  </div>
-                )}
-                {intelligence.arenaElo != null && (
-                  <div className="flex flex-col">
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Arena ELO{intelligence.arenaRank != null ? ` · #${intelligence.arenaRank}` : ""}
-                    </span>
-                    <span className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
-                      {intelligence.arenaElo.toFixed(0)}
-                    </span>
-                  </div>
-                )}
+          {/* Intelligence scores — always shown */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+              Punteggi Intelligenza
+            </h3>
+            <div className="grid grid-cols-2 gap-3 rounded-lg bg-zinc-50 dark:bg-zinc-800 p-3">
+              <div className="flex flex-col">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">AA Intelligence</span>
+                {intelligence?.aaScore != null
+                  ? <span className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">{intelligence.aaScore.toFixed(1)}</span>
+                  : <span className="text-2xl font-bold text-zinc-300 dark:text-zinc-600">—</span>
+                }
               </div>
-            </section>
-          )}
+              <div className="flex flex-col">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Arena ELO{intelligence?.arenaRank != null ? ` · #${intelligence.arenaRank}` : ""}
+                </span>
+                {intelligence?.arenaElo != null
+                  ? <span className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">{intelligence.arenaElo.toFixed(0)}</span>
+                  : <span className="text-2xl font-bold text-zinc-300 dark:text-zinc-600">—</span>
+                }
+              </div>
+            </div>
+          </section>
 
-          {/* Performance */}
-          {(intelligence?.aaSpeed != null || intelligence?.aaLatency != null) && (
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
-                Performance
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <Score label="Velocità output" value={intelligence.aaSpeed} unit="tok/s" digits={0} />
-                <Score label="Latenza TTFT" value={intelligence.aaLatency} unit="ms" digits={0} />
-              </div>
-            </section>
-          )}
+          {/* Performance — always shown */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+              Performance
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <Score label="Velocità output" value={intelligence?.aaSpeed ?? null} unit="tok/s" digits={0} />
+              <Score label="Latenza TTFT" value={intelligence?.aaLatency ?? null} unit="ms" digits={0} />
+            </div>
+          </section>
 
           {/* Pricing */}
           <section>
