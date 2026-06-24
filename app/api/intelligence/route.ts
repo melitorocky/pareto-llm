@@ -2,34 +2,57 @@ import { unstable_cache } from "next/cache";
 import type { IntelligenceData, IntelligenceMap } from "@/lib/intelligence";
 
 // ── Artificial Analysis ────────────────────────────────────────────────────────
+// Free tier: /api/v2/language/models/free — 100 req/day, resets 00:00 UTC.
+// With 24h server cache we consume exactly 1 request per day.
 
 type AAModel = {
   id?: string | null;
   name?: string | null;
-  quality_index?: number | null;
-  intelligence_index?: number | null;
-  median_output_tokens_per_second?: number | null;
-  // median_time_to_first_token is in seconds on their API
-  median_time_to_first_token?: number | null;
+  slug?: string | null;
+  evaluations?: {
+    artificial_analysis_intelligence_index?: number | null;
+  } | null;
+  performance?: {
+    median_output_tokens_per_second?: number | null;
+    median_time_to_first_token_seconds?: number | null; // seconds
+  } | null;
 };
 
-async function fetchArtificialAnalysis(): Promise<AAModel[]> {
-  const headers: HeadersInit = { accept: "application/json" };
-  const apiKey = process.env.ARTIFICIAL_ANALYSIS_API_KEY;
-  if (apiKey) headers["authorization"] = `Bearer ${apiKey}`;
+type AAResponse = {
+  data: AAModel[];
+  pagination: { page: number; page_size: number; total_pages: number };
+};
 
-  const res = await fetch("https://artificialanalysis.ai/api/v2/language/models", {
-    headers,
-    cache: "no-store",
-  });
-  if (res.status === 403) {
-    // Free tier doesn't include language models list — requires Pro subscription
-    console.warn("[intelligence] AA API 403: upgrade to Pro to enable AA scores");
-    return [];
+async function fetchAAPage(apiKey: string, page: number): Promise<AAResponse | null> {
+  const res = await fetch(
+    `https://artificialanalysis.ai/api/v2/language/models/free?page=${page}`,
+    { headers: { accept: "application/json", "x-api-key": apiKey }, cache: "no-store" }
+  );
+  if (!res.ok) {
+    console.warn(`[intelligence] AA API ${res.status} on page ${page}`);
+    return null;
   }
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data) ? data : (data.models ?? data.data ?? []);
+  return res.json();
+}
+
+async function fetchArtificialAnalysis(): Promise<AAModel[]> {
+  const apiKey = process.env.ARTIFICIAL_ANALYSIS_API_KEY;
+  if (!apiKey) return [];
+
+  // Fetch page 1 to get total_pages, then remaining pages in parallel
+  const first = await fetchAAPage(apiKey, 1);
+  if (!first) return [];
+
+  const { total_pages } = first.pagination;
+  if (total_pages <= 1) return first.data;
+
+  const rest = await Promise.all(
+    Array.from({ length: total_pages - 1 }, (_, i) => fetchAAPage(apiKey, i + 2))
+  );
+  return [
+    ...first.data,
+    ...rest.flatMap(r => r?.data ?? []),
+  ];
 }
 
 // ── Arena ELO (lmarena-ai/leaderboard-dataset on HuggingFace) ─────────────────
@@ -86,20 +109,16 @@ async function buildMap(): Promise<IntelligenceMap> {
   };
 
   for (const m of aaModels) {
-    if (!m.id) continue;
+    const ttft = m.performance?.median_time_to_first_token_seconds;
     const data: Partial<IntelligenceData> = {
-      aaScore: m.intelligence_index ?? m.quality_index ?? null,
-      aaSpeed: m.median_output_tokens_per_second ?? null,
-      // AA returns TTFT in seconds → convert to ms
-      aaLatency:
-        m.median_time_to_first_token != null
-          ? Math.round(m.median_time_to_first_token * 1000)
-          : null,
+      aaScore: m.evaluations?.artificial_analysis_intelligence_index ?? null,
+      aaSpeed: m.performance?.median_output_tokens_per_second ?? null,
+      aaLatency: ttft != null ? Math.round(ttft * 1000) : null,
     };
-    const id = m.id.toLowerCase();
-    set(id, data);
-    set(slugify(m.id), data);
-    if (m.name) set(slugify(m.name), data);
+    // Index by all available identifiers for robust matching against OpenRouter IDs
+    if (m.id)   { set(m.id.toLowerCase(), data); set(slugify(m.id), data); }
+    if (m.slug) { set(m.slug.toLowerCase(), data); set(slugify(m.slug), data); }
+    if (m.name) { set(slugify(m.name), data); }
   }
 
   for (const r of arenaRows) {
