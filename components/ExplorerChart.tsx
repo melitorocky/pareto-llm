@@ -223,7 +223,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
               domain={["auto", "auto"]}
               tickFormatter={v => formatAxisValue(Number(v), xMetric)}
               tick={{ fontSize: 11, fill: "#6b7280", angle: -35, textAnchor: "end" }}
-              tickCount={3}
+              tickCount={5}
             >
               <Label value={xOpt.label} position="bottom" offset={28} style={{ fontSize: 12, fill: "#6b7280" }} />
             </XAxis>
