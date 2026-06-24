@@ -1,6 +1,10 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+## Requisiti
+
+- Node.js >= 20.9.0 (Next.js 16 richiede Node >= 20.9)
+
+## Avvio locale
 
 First, run the development server:
 
@@ -16,9 +20,24 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+Se vedi errori legati alla versione di Node, aggiorna Node alla versione indicata sopra.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Questo progetto usa [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) per caricare [Geist](https://vercel.com/font).
+
+## Funzionalità principali
+
+- Dashboard pubblica (ITA), responsive, con:
+  - Tabella modelli con: Nome, $/token in/out, $/1M in/out, Contesto, Tipologia, Peculiarità, Knowledge cutoff
+  - Grafico scatter: $/1M input (log) vs Contesto (log), famiglie in evidenza: OpenAI, Anthropic, Grok
+  - Card consigli per: Pianificazione, Sviluppo/Build, Modifiche Codice
+  - Slider “Bilancia costo e qualità” con persistenza in localStorage
+  - Pulsante “Aggiorna” per refetch
+
+## Note dati
+
+La pagina usa la route `/api/models` che fa da proxy a `https://openrouter.ai/api/v1/models` (nessuna chiave richiesta). La cache è di 30 minuti; il pulsante “Aggiorna” invalida la cache client-side.
 
 ## Learn More
 
