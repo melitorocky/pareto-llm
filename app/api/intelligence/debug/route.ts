@@ -1,47 +1,56 @@
 import { revalidateTag } from "next/cache";
 
+async function tryAuth(apiKey: string, headers: Record<string, string>) {
+  const res = await fetch("https://artificialanalysis.ai/api/v2/language/models", {
+    headers: { accept: "application/json", ...headers },
+    cache: "no-store",
+  });
+  const body = await res.json().catch(() => null);
+  return { status: res.status, body };
+}
+
 export async function GET() {
-  const hasKey = !!process.env.ARTIFICIAL_ANALYSIS_API_KEY;
-  const keyPrefix = hasKey
-    ? process.env.ARTIFICIAL_ANALYSIS_API_KEY!.slice(0, 8) + "…"
-    : null;
+  const apiKey = process.env.ARTIFICIAL_ANALYSIS_API_KEY ?? "";
+  const hasKey = !!apiKey;
 
-  // Fetch AA API directly (no cache)
-  let aaStatus = 0;
-  let aaFirstModel: unknown = null;
-  let aaError: string | null = null;
-  let aaCount = 0;
-
-  try {
-    const headers: HeadersInit = { accept: "application/json" };
-    if (hasKey) headers["authorization"] = `Bearer ${process.env.ARTIFICIAL_ANALYSIS_API_KEY}`;
-    const res = await fetch("https://artificialanalysis.ai/api/v2/language/models", {
-      headers,
-      cache: "no-store",
-    });
-    aaStatus = res.status;
-    const body = await res.json();
-    const arr = Array.isArray(body) ? body : (body.models ?? body.data ?? body);
-    if (Array.isArray(arr)) {
-      aaCount = arr.length;
-      aaFirstModel = arr[0] ?? null; // exposes all field names
-    } else {
-      aaFirstModel = body; // show whatever came back
-    }
-  } catch (e) {
-    aaError = String(e);
+  if (!hasKey) {
+    return Response.json({ hasKey: false, note: "ARTIFICIAL_ANALYSIS_API_KEY not set." });
   }
 
-  // Invalidate the 24h cache so the next /api/intelligence call rebuilds with the current key
+  // Try all known auth formats in parallel
+  const [bearer, xApiKey, plain] = await Promise.all([
+    tryAuth(apiKey, { authorization: `Bearer ${apiKey}` }),
+    tryAuth(apiKey, { "x-api-key": apiKey }),
+    tryAuth(apiKey, { authorization: apiKey }),
+  ]);
+
+  const working = bearer.status === 200 ? "Bearer"
+    : xApiKey.status === 200 ? "x-api-key"
+    : plain.status === 200 ? "plain Authorization"
+    : null;
+
+  // If one worked, grab the first model's fields
+  const successBody = bearer.status === 200 ? bearer.body
+    : xApiKey.status === 200 ? xApiKey.body
+    : plain.status === 200 ? plain.body
+    : null;
+  const arr = successBody && (Array.isArray(successBody) ? successBody : (successBody.models ?? successBody.data ?? []));
+  const firstModel = Array.isArray(arr) ? arr[0] ?? null : null;
+
   revalidateTag("intelligence", { expire: 0 });
 
   return Response.json({
     hasKey,
-    keyPrefix,
-    aaStatus,
-    aaCount,
-    aaFirstModel,
-    aaError,
-    note: "Cache invalidated — open /api/intelligence now to rebuild with fresh data.",
+    keyPrefix: apiKey.slice(0, 8) + "…",
+    working,
+    results: {
+      "Bearer": { status: bearer.status },
+      "x-api-key": { status: xApiKey.status },
+      "plain": { status: plain.status },
+    },
+    firstModel,
+    note: working
+      ? `Use "${working}" header format. Cache invalidated.`
+      : "No format worked — check if the key is valid on artificialanalysis.ai.",
   });
 }
