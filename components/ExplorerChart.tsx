@@ -266,20 +266,6 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
     );
   }, [onSelectModel]);
 
-  if (points.length === 0) {
-    return (
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-4 items-center">
-          <MetricSelect label="Asse X" value={xMetric} onChange={setXMetric} />
-          <MetricSelect label="Asse Y" value={yMetric} onChange={setYMetric} />
-        </div>
-        <div className="flex items-center justify-center text-sm text-zinc-400" style={{ height: h }}>
-          Nessun dato disponibile per questa combinazione di metriche.
-        </div>
-      </div>
-    );
-  }
-
   // Tooltip positioning: flip horizontally if near right edge
   const tipLeft = hovered ? (hovered.cx + 170 > w ? hovered.cx - 170 : hovered.cx + 14) : 0;
   const tipTop  = hovered ? Math.max(4, hovered.cy - 56) : 0;
@@ -289,13 +275,21 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
       <div className="flex flex-wrap gap-4 items-center">
         <MetricSelect label="Asse X" value={xMetric} onChange={setXMetric} />
         <MetricSelect label="Asse Y" value={yMetric} onChange={setYMetric} />
-        <span className="text-xs text-zinc-400 dark:text-zinc-500">
-          {points.length} modelli con entrambi i dati disponibili
-        </span>
+        {points.length > 0 && (
+          <span className="text-xs text-zinc-400 dark:text-zinc-500">
+            {points.length} modelli con entrambi i dati disponibili
+          </span>
+        )}
       </div>
 
+      {/* ref must always be in DOM so ResizeObserver fires even before data loads */}
       <div ref={ref} className="relative w-full min-w-0" style={{ height: h }}>
-        {w > 0 && (
+        {points.length === 0 && (
+          <div className="flex items-center justify-center text-sm text-zinc-400 h-full">
+            Nessun dato disponibile per questa combinazione di metriche.
+          </div>
+        )}
+        {points.length > 0 && w > 0 && (
           <ComposedChart width={w} height={h} margin={{ top: 10, right: 20, bottom: 55, left: 70 }}>
             <XAxis
               type="number" dataKey="x" name={xOpt.label}
@@ -344,7 +338,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
             )}
           </ComposedChart>
         )}
-        {w === 0 && <div style={{ height: h }} />}
+        {points.length > 0 && w === 0 && <div style={{ height: h }} />}
 
         {/* Custom tooltip — shown only when directly on a dot */}
         {hovered && (
