@@ -104,6 +104,20 @@ function formatTooltipValue(value: number, metric: MetricKey): string {
   }
 }
 
+// Domain with breathing room so low/extreme points don't sit on the axis line.
+// Linear axes start at 0 (as requested); log axes can't include 0, so they get
+// a multiplicative margin below the min and above the max.
+function axisDomain(values: number[], scale: "log" | "linear"): [number, number] | undefined {
+  const vals = values.filter(v => isFinite(v) && (scale !== "log" || v > 0));
+  if (vals.length === 0) return undefined;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  if (scale === "log") {
+    return [min / 1.8, max * 1.8];
+  }
+  return [0, max <= 0 ? 1 : max * 1.05];
+}
+
 function computeParetoFront(
   points: Point[],
   xHigherIsBetter: boolean,
@@ -274,6 +288,9 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
     return Array.from({ length: N }, (_, i) => min + (i / (N - 1)) * (max - min));
   }, [points, xOpt.scale]);
 
+  const xDomain = useMemo(() => axisDomain(points.map(p => p.x), xOpt.scale), [points, xOpt.scale]);
+  const yDomain = useMemo(() => axisDomain(points.map(p => p.y), yOpt.scale), [points, yOpt.scale]);
+
   // Custom dot: fires onMouseEnter/onMouseLeave only when directly on the dot.
   // For points where several models share the exact same coordinate, a small
   // count badge is drawn once (on the first of the group) showing how many.
@@ -315,7 +332,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
   const tipTop  = hovered ? Math.max(4, hovered.cy - 56) : 0;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <div className="flex flex-wrap gap-4 items-center">
         <MetricSelect label="Asse X" value={xMetric} onChange={setXMetric} />
         <MetricSelect label="Asse Y" value={yMetric} onChange={setYMetric} />
@@ -345,7 +362,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
           <ComposedChart width={w} height={h} margin={{ top: 10, right: 20, bottom: 55, left: 70 }}>
             <XAxis
               type="number" dataKey="x" name={xOpt.label}
-              scale={xOpt.scale} domain={["auto", "auto"]}
+              scale={xOpt.scale} domain={xDomain ?? ["auto", "auto"]} allowDataOverflow
               tickFormatter={v => formatAxisValue(Number(v), xMetric)}
               tick={{ fontSize: 11, fill: "#6b7280", angle: -35, textAnchor: "end" }}
               ticks={xTicks}
@@ -354,7 +371,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
             </XAxis>
             <YAxis
               type="number" dataKey="y" name={yOpt.label}
-              scale={yOpt.scale} domain={["auto", "auto"]}
+              scale={yOpt.scale} domain={yDomain ?? ["auto", "auto"]} allowDataOverflow
               tickFormatter={v => formatAxisValue(Number(v), yMetric)}
               tick={{ fontSize: 11, fill: "#6b7280" }}
               tickCount={Math.max(3, Math.min(6, Math.floor(h / 60)))}
