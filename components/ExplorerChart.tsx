@@ -22,14 +22,12 @@ type Point = {
   x: number;
   y: number;
   z: number;
-  labelIdx: number; // stack order among points sharing the exact same (x, y)
+  coordKey: string;  // `${x}|${y}` — groups models stacked at the same spot
+  stackIdx: number;  // order within the group; badge renders once on idx 0
+  groupSize: number; // how many models share this exact (x, y)
 };
 
-type HoveredPt = { x: number; y: number; name: string; family: string; cx: number; cy: number };
-
-// When the filtered set has at most this many points, show clickable name
-// labels next to each dot so overlapping models stay visible and selectable.
-const LABEL_THRESHOLD = 15;
+type HoveredPt = { x: number; y: number; cx: number; cy: number; coordKey: string };
 
 function getMetricValue(
   model: NormalizedModel,
@@ -206,7 +204,6 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
 
   const { points, excludedX, excludedY } = useMemo(() => {
     const pts: Point[] = [];
-    const stack = new Map<string, number>(); // "x|y" -> count seen so far
     let exX = 0, exY = 0; // models dropped because they lack the chosen-axis value
     for (const m of data) {
       const x = getMetricValue(m, intelligenceMap, xMetric);
@@ -216,13 +213,30 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
       if (x == null || y == null) continue;
       if (xOpt.scale === "log" && x <= 0) continue;
       if (yOpt.scale === "log" && y <= 0) continue;
-      const key = `${x}|${y}`;
-      const idx = stack.get(key) ?? 0;
-      stack.set(key, idx + 1);
-      pts.push({ id: m.id, name: m.name, family: m.family, x, y, z: isHighlightedFamily(m) ? 1 : 0, labelIdx: idx });
+      pts.push({ id: m.id, name: m.name, family: m.family, x, y, z: isHighlightedFamily(m) ? 1 : 0, coordKey: `${x}|${y}`, stackIdx: 0, groupSize: 1 });
+    }
+    // Second pass: compute group sizes and stack index per coordinate
+    const counts = new Map<string, number>();
+    for (const p of pts) counts.set(p.coordKey, (counts.get(p.coordKey) ?? 0) + 1);
+    const seen = new Map<string, number>();
+    for (const p of pts) {
+      const i = seen.get(p.coordKey) ?? 0;
+      seen.set(p.coordKey, i + 1);
+      p.stackIdx = i;
+      p.groupSize = counts.get(p.coordKey)!;
     }
     return { points: pts, excludedX: exX, excludedY: exY };
   }, [data, intelligenceMap, xMetric, yMetric, xOpt.scale, yOpt.scale]);
+
+  // Map each coordinate to the list of models stacked there, for the hover popup.
+  const groupsByKey = useMemo(() => {
+    const m = new Map<string, Point[]>();
+    for (const p of points) {
+      const arr = m.get(p.coordKey);
+      if (arr) arr.push(p); else m.set(p.coordKey, [p]);
+    }
+    return m;
+  }, [points]);
 
   const highlightedSeries = useMemo(
     () => Array.from(HIGHLIGHT_FAMILIES).map(fam => ({
@@ -260,46 +274,41 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
     return Array.from({ length: N }, (_, i) => min + (i / (N - 1)) * (max - min));
   }, [points, xOpt.scale]);
 
-  // Show name labels next to dots when the filtered set is small enough.
-  const showLabels = points.length > 0 && points.length <= LABEL_THRESHOLD;
-
   // Custom dot: fires onMouseEnter/onMouseLeave only when directly on the dot.
-  // When labels are enabled, also renders a clickable name beside the dot so
-  // overlapping models stay visible and selectable.
+  // For points where several models share the exact same coordinate, a small
+  // count badge is drawn once (on the first of the group) showing how many.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dot = useCallback((props: any) => {
     const { cx, cy, r, fill, stroke, payload } = props;
     if (cx == null || cy == null) return null;
     const cursor = onSelectModel ? "pointer" : "default";
-    const nearRight = cx > w * 0.72;
-    const lx = nearRight ? cx - 9 : cx + 9;
-    const ly = cy + 4 + payload.labelIdx * 13; // stagger exact-overlap labels downward
-    const text = payload.name.length > 24 ? payload.name.slice(0, 23) + "…" : payload.name;
+    const showBadge = payload.groupSize > 1 && payload.stackIdx === 0;
+    const nearRight = cx > w * 0.9;
+    const bx = nearRight ? cx - 9 : cx + 9;
+    const by = cy - 9;
     return (
       <g key={payload.id}>
         <circle
           cx={cx} cy={cy} r={r ?? 5}
           fill={fill} stroke={stroke} strokeWidth={1} fillOpacity={0.85}
           style={{ cursor }}
-          onMouseEnter={() => setHovered({ x: payload.x, y: payload.y, name: payload.name, family: payload.family, cx, cy })}
+          onMouseEnter={() => setHovered({ x: payload.x, y: payload.y, cx, cy, coordKey: payload.coordKey })}
           onMouseLeave={() => setHovered(null)}
           onClick={() => onSelectModel?.(payload.id)}
         />
-        {showLabels && (
-          <text
-            x={lx} y={ly}
-            textAnchor={nearRight ? "end" : "start"}
-            className="fill-current text-zinc-600 dark:text-zinc-300"
-            fontSize={11} fontWeight={500}
-            style={{ cursor }}
-            onClick={() => onSelectModel?.(payload.id)}
-          >
-            {text}
-          </text>
+        {showBadge && (
+          <g style={{ pointerEvents: "none" }}>
+            <circle cx={bx} cy={by} r={8} fill="#3b82f6" stroke="#fff" strokeWidth={1.5} />
+            <text x={bx} y={by} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={10} fontWeight={700}>
+              {payload.groupSize}
+            </text>
+          </g>
         )}
       </g>
     );
-  }, [onSelectModel, showLabels, w]);
+  }, [onSelectModel, w]);
+
+  const hoveredModels = hovered ? groupsByKey.get(hovered.coordKey) ?? [] : [];
 
   // Tooltip positioning: flip horizontally if near right edge
   const tipLeft = hovered ? (hovered.cx + 170 > w ? hovered.cx - 170 : hovered.cx + 14) : 0;
@@ -383,15 +392,25 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
         )}
         {points.length > 0 && w === 0 && <div style={{ height: h }} />}
 
-        {/* Custom tooltip — shown only when directly on a dot */}
-        {hovered && (
+        {/* Custom tooltip — shown only when directly on a dot. Lists every model
+            stacked at the hovered coordinate. */}
+        {hovered && hoveredModels.length > 0 && (
           <div
-            className="absolute z-10 pointer-events-none rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-xs shadow-lg"
+            className="absolute z-10 pointer-events-none rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-xs shadow-lg max-w-[240px]"
             style={{ left: tipLeft, top: tipTop }}
           >
-            <p className="font-semibold text-sm mb-1" style={{ color: familyColor(hovered.family) }}>
-              {hovered.name}
-            </p>
+            {hoveredModels.length > 1 && (
+              <p className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 mb-1">
+                {hoveredModels.length} modelli in questo punto
+              </p>
+            )}
+            <ul className="mb-1 space-y-0.5 max-h-44 overflow-hidden">
+              {hoveredModels.map(m => (
+                <li key={m.id} className="font-semibold text-sm leading-tight truncate" style={{ color: familyColor(m.family) }}>
+                  {m.name}
+                </li>
+              ))}
+            </ul>
             <p className="text-zinc-500 dark:text-zinc-400">
               {xOpt.label}: <span className="text-zinc-800 dark:text-zinc-200 font-medium">{formatTooltipValue(hovered.x, xMetric)}</span>
             </p>
