@@ -258,7 +258,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
               cursor={{ strokeDasharray: "3 3" }}
               content={({ payload }) => {
                 const pt = payload?.[0]?.payload as Point | undefined;
-                if (!pt) return null;
+                if (!pt?.name) return null;
                 const xVal = formatAxisValue(pt.x, xMetric);
                 const yVal = formatAxisValue(pt.y, yMetric);
                 return (

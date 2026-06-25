@@ -114,7 +114,7 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-6">
         {/* Header */}
         <header className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl font-semibold mr-auto dark:text-zinc-100">Pareto LLM</h1>
+          <h1 className="text-2xl font-semibold mr-auto dark:text-zinc-100">Pareto LLM Dashboard</h1>
           <ThemeToggle />
           <button
             onClick={async () => {
