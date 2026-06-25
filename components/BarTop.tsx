@@ -19,7 +19,6 @@ export default function BarTop({
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [w, setW] = useState(0);
-  const [showNegatives, setShowNegatives] = useState(false);
   const [showZeros, setShowZeros] = useState(true);
   const h = 320;
 
@@ -42,7 +41,7 @@ export default function BarTop({
       .filter(m => {
         const val = m[priceKey];
         if (val == null || !Number.isFinite(val)) return false;
-        if (!showNegatives && val < 0) return false;
+        if (val < 0) return false;
         if (!showZeros && val === 0) return false;
         return true;
       })
@@ -55,7 +54,7 @@ export default function BarTop({
         family: m.family,
         value: m[priceKey] as number,
       }));
-  }, [data, priceKey, count, showNegatives, showZeros]);
+  }, [data, priceKey, count, showZeros]);
 
   if (w <= 0) return <div ref={ref} style={{ height: h }} className="w-full min-w-0" />;
 
@@ -63,18 +62,11 @@ export default function BarTop({
     <div ref={ref} className="w-full min-w-0">
       <div className="flex gap-2 mb-3">
         <button
-          onClick={() => setShowNegatives(s => !s)}
-          className={`px-2 py-1 rounded-md text-xs border ${showNegatives ? "bg-black dark:bg-white text-white dark:text-black" : "bg-white dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300"}`}
-          aria-pressed={showNegatives}
-        >
-          {showNegatives ? "Nascondi negativi" : "Mostra negativi"}
-        </button>
-        <button
           onClick={() => setShowZeros(s => !s)}
           className={`px-2 py-1 rounded-md text-xs border ${showZeros ? "bg-black dark:bg-white text-white dark:text-black" : "bg-white dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300"}`}
           aria-pressed={showZeros}
         >
-          {showZeros ? "Nascondi zeri" : "Mostra zeri"}
+          {showZeros ? "Nascondi Free Models" : "Mostra Free Models"}
         </button>
       </div>
       <BarChart width={w} height={h} data={rows} margin={{ top: 4, right: 20, bottom: 12, left: 10 }}>
