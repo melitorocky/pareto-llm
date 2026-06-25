@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { OpenRouterModelsResponse, NormalizedModel } from "@/lib/types";
 import { IntelligenceMap } from "@/lib/intelligence";
-import { normalizeModel, formatUSD, formatPerM, formatContext } from "@/lib/normalize";
-import { familyColor, isHighlightedFamily, HIGHLIGHT_FAMILIES } from "@/lib/families";
+import { normalizeModel, formatPerM, formatContext } from "@/lib/normalize";
+import { familyColor, isHighlightedFamily } from "@/lib/families";
 import { scoreModels, Task } from "@/lib/scoring";
 import { lookupIntelligence } from "@/lib/intelligence";
 import { usePersistentState } from "@/lib/persist";
@@ -40,13 +40,7 @@ async function fetchIntelligence(): Promise<IntelligenceMap> {
 }
 
 export default function DashboardPage() {
-  const {
-    data,
-    isLoading,
-    isError,
-    dataUpdatedAt,
-    refetch,
-  } = useQuery({
+  const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["models"],
     queryFn: () => fetchModels(false),
     staleTime: DAY_MS,
@@ -101,7 +95,7 @@ export default function DashboardPage() {
   }, [models, filters]);
 
   const ranked = useMemo(() => scoreModels(filtered, task, cq), [filtered, task, cq]);
-  const top3 = ranked.slice(0, 3);
+  const top7 = ranked.slice(0, 7);
 
   const selectedModel = useMemo(
     () => ranked.find(r => r.model.id === selectedId)?.model ?? null,
@@ -123,7 +117,6 @@ export default function DashboardPage() {
           <ThemeToggle />
           <button
             onClick={async () => {
-              // Bust the server-side Next.js fetch cache, then update TanStack state
               await fetchModels(true);
               await Promise.all([refetch(), refetchIntelligence()]);
             }}
@@ -136,69 +129,92 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 w-full">
-          {/* Left column — filters + charts */}
-          <div className="col-span-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4 min-w-0 w-full">
-            {/* Filters row */}
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                value={filters.search}
-                onChange={e => setFilters({ ...filters, search: e.target.value })}
-                placeholder="Cerca modello..."
-                className="border border-zinc-200 dark:border-zinc-700 rounded-md px-3 py-2 w-full sm:w-64 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400"
-              />
-              <FilterCheck
-                label="Reasoning"
-                checked={filters.showReasoning}
-                onChange={v => setFilters({ ...filters, showReasoning: v })}
-              />
-              <FilterCheck
-                label="Vision"
-                checked={filters.showVision}
-                onChange={v => setFilters({ ...filters, showVision: v })}
-              />
-              <FilterCheck
-                label="Tools"
-                checked={filters.showTools}
-                onChange={v => setFilters({ ...filters, showTools: v })}
-              />
-              <FilterCheck
-                label="Solo famiglie in evidenza"
-                checked={filters.onlyHighlighted}
-                onChange={v => setFilters({ ...filters, onlyHighlighted: v })}
-              />
+        {/* Filters — full width */}
+        <section className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              value={filters.search}
+              onChange={e => setFilters({ ...filters, search: e.target.value })}
+              placeholder="Cerca modello..."
+              className="border border-zinc-200 dark:border-zinc-700 rounded-md px-3 py-2 w-full sm:w-64 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400"
+            />
+            <FilterCheck label="Reasoning" checked={filters.showReasoning} onChange={v => setFilters({ ...filters, showReasoning: v })} />
+            <FilterCheck label="Vision"    checked={filters.showVision}    onChange={v => setFilters({ ...filters, showVision: v })} />
+            <FilterCheck label="Tools"     checked={filters.showTools}     onChange={v => setFilters({ ...filters, showTools: v })} />
+            <FilterCheck label="Solo famiglie in evidenza" checked={filters.onlyHighlighted} onChange={v => setFilters({ ...filters, onlyHighlighted: v })} />
+          </div>
+          <div className="flex gap-2 items-start flex-wrap">
+            <span className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Famiglie:</span>
+            <div className="flex gap-1 flex-wrap">
+              {familiesAll.map(({ key, label }) => {
+                const active = filters.families.includes(key);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      const sel = new Set(filters.families);
+                      sel.has(key) ? sel.delete(key) : sel.add(key);
+                      setFilters({ ...filters, families: Array.from(sel) });
+                    }}
+                    className={`text-xs px-2 py-1 rounded-full border ${
+                      active
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100"
+                        : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
+          </div>
+        </section>
 
-            {/* Family chips */}
-            <div className="flex gap-2 items-center flex-wrap">
-              <span className="text-sm text-zinc-500 dark:text-zinc-400">Famiglie:</span>
-              <div className="flex gap-1 flex-wrap">
-                {familiesAll.map(({ key, label }) => {
-                  const active = filters.families.includes(key);
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => {
-                        const sel = new Set(filters.families);
-                        sel.has(key) ? sel.delete(key) : sel.add(key);
-                        setFilters({ ...filters, families: Array.from(sel) });
-                      }}
-                      className={`text-xs px-2 py-1 rounded-full border ${
-                        active
-                          ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100"
-                          : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
+        {/* Scatter chart — full width */}
+        <section className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+          <h3 className="text-sm font-medium mb-3 dark:text-zinc-200">Grafico esplorativo</h3>
+          <ExplorerChart
+            data={filtered}
+            intelligenceMap={intelligenceMap}
+            onSelectModel={id => setSelectedId(prev => prev === id ? null : id)}
+          />
+        </section>
+
+        {/* Bar chart + Recommendations side by side */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Bar chart */}
+          <div className="lg:col-span-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-sm font-medium mr-auto dark:text-zinc-200">Top economici</h3>
+              <button
+                onClick={() => setBarMetric("in")}
+                className={`px-2 py-1 rounded-md text-xs border ${
+                  barMetric === "in"
+                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+                    : "bg-white dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300"
+                }`}
+              >
+                $/1M Input
+              </button>
+              <button
+                onClick={() => setBarMetric("out")}
+                className={`px-2 py-1 rounded-md text-xs border ${
+                  barMetric === "out"
+                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+                    : "bg-white dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300"
+                }`}
+              >
+                $/1M Output
+              </button>
             </div>
+            <BarTop data={filtered} metric={barMetric} />
+          </div>
 
+          {/* Recommendations + Slider */}
+          <aside className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">
             {/* Cost/quality slider */}
             <div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-medium dark:text-zinc-200">Bilancia costo e qualità</span>
                 <span className="text-sm text-zinc-500 dark:text-zinc-400">{(cq * 100).toFixed(0)}%</span>
               </div>
@@ -213,100 +229,62 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Explorer chart */}
-            <div>
-              <h3 className="text-sm font-medium mb-2 dark:text-zinc-200">Grafico esplorativo</h3>
-              <ExplorerChart
-                data={filtered}
-                intelligenceMap={intelligenceMap}
-                onSelectModel={id => setSelectedId(prev => prev === id ? null : id)}
-              />
-            </div>
-
-            {/* Bar chart — cheapest models */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-sm font-medium mr-auto dark:text-zinc-200">Top economici</h3>
-                <button
-                  onClick={() => setBarMetric("in")}
-                  className={`px-2 py-1 rounded-md text-xs border ${
-                    barMetric === "in"
-                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-                      : "bg-white dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300"
-                  }`}
-                >
-                  $/1M Input
-                </button>
-                <button
-                  onClick={() => setBarMetric("out")}
-                  className={`px-2 py-1 rounded-md text-xs border ${
-                    barMetric === "out"
-                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-                      : "bg-white dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300"
-                  }`}
-                >
-                  $/1M Output
-                </button>
+            {/* Task selector + Top 7 */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                {(["plan", "build", "code"] as Task[]).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTask(t)}
+                    className={`px-3 py-1.5 rounded-md text-sm border ${
+                      task === t
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900"
+                        : "bg-white dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300"
+                    }`}
+                  >
+                    {t === "plan" ? "Pianificazione" : t === "build" ? "Sviluppo" : "Codice"}
+                  </button>
+                ))}
               </div>
-              <BarTop data={filtered} metric={barMetric} />
-            </div>
-          </div>
-
-          {/* Right column — recommendations */}
-          <aside className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              {(["plan", "build", "code"] as Task[]).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTask(t)}
-                  className={`px-3 py-1.5 rounded-md text-sm border ${
-                    task === t
-                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900"
-                      : "bg-white dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300"
-                  }`}
-                >
-                  {t === "plan" ? "Pianificazione" : t === "build" ? "Sviluppo" : "Codice"}
-                </button>
-              ))}
-            </div>
-            <h3 className="text-sm font-medium dark:text-zinc-200">
-              Consigli top per:{" "}
-              {task === "plan" ? "Pianificazione" : task === "build" ? "Sviluppo" : "Modifiche Codice"}
-            </h3>
-            <ol className="space-y-3 list-decimal ml-4">
-              {top3.map(({ model, score }) => {
-                const intel = lookupIntelligence(intelligenceMap, model.id);
-                return (
-                  <li key={model.id} className="text-sm">
-                    <button
-                      className="font-semibold hover:underline text-left"
-                      style={{ color: familyColor(model.family) }}
-                      onClick={() => setSelectedId(prev => prev === model.id ? null : model.id)}
-                    >
-                      {model.name}
-                    </button>
-                    <span className="text-zinc-400 dark:text-zinc-500"> · {(score * 100).toFixed(0)}%</span>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      In {formatPerM(model.inPerM)} · Out {formatPerM(model.outPerM)} · Ctx {formatContext(model.context)}
-                    </div>
-                    {(intel?.aaScore != null || intel?.arenaElo != null) && (
-                      <div className="text-xs text-zinc-400 dark:text-zinc-500">
-                        {intel.aaScore != null && `AA: ${intel.aaScore.toFixed(0)}`}
-                        {intel.aaScore != null && intel.arenaElo != null && " · "}
-                        {intel.arenaElo != null && `ELO: ${intel.arenaElo.toFixed(0)}`}
+              <h3 className="text-sm font-medium dark:text-zinc-200">
+                Consigli top per:{" "}
+                {task === "plan" ? "Pianificazione" : task === "build" ? "Sviluppo" : "Modifiche Codice"}
+              </h3>
+              <ol className="space-y-3 list-decimal ml-4">
+                {top7.map(({ model, score }) => {
+                  const intel = lookupIntelligence(intelligenceMap, model.id);
+                  return (
+                    <li key={model.id} className="text-sm">
+                      <button
+                        className="font-semibold hover:underline text-left"
+                        style={{ color: familyColor(model.family) }}
+                        onClick={() => setSelectedId(prev => prev === model.id ? null : model.id)}
+                      >
+                        {model.name}
+                      </button>
+                      <span className="text-zinc-400 dark:text-zinc-500"> · {(score * 100).toFixed(0)}%</span>
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        In {formatPerM(model.inPerM)} · Out {formatPerM(model.outPerM)} · Ctx {formatContext(model.context)}
                       </div>
-                    )}
-                  </li>
-                );
-              })}
-              {top3.length === 0 && (
-                <p className="text-xs text-zinc-400">Nessun modello corrisponde ai filtri correnti.</p>
-              )}
-            </ol>
+                      {(intel?.aaScore != null || intel?.arenaElo != null) && (
+                        <div className="text-xs text-zinc-400 dark:text-zinc-500">
+                          {intel.aaScore != null && `AA: ${intel.aaScore.toFixed(0)}`}
+                          {intel.aaScore != null && intel.arenaElo != null && " · "}
+                          {intel.arenaElo != null && `ELO: ${intel.arenaElo.toFixed(0)}`}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+                {top7.length === 0 && (
+                  <p className="text-xs text-zinc-400">Nessun modello corrisponde ai filtri correnti.</p>
+                )}
+              </ol>
+            </div>
           </aside>
         </section>
 
-        {/* Model table */}
+        {/* Model table — full width */}
         <section className="rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-x-auto bg-white dark:bg-zinc-900">
           <table className="min-w-full text-sm">
             <thead className="bg-zinc-50 dark:bg-zinc-800">
@@ -325,14 +303,10 @@ export default function DashboardPage() {
             </thead>
             <tbody>
               {isLoading && (
-                <tr>
-                  <td className="px-3 py-3 text-zinc-500" colSpan={10}>Caricamento…</td>
-                </tr>
+                <tr><td className="px-3 py-3 text-zinc-500" colSpan={10}>Caricamento…</td></tr>
               )}
               {isError && (
-                <tr>
-                  <td className="px-3 py-3 text-red-500" colSpan={10}>Errore nel caricamento dei modelli.</td>
-                </tr>
+                <tr><td className="px-3 py-3 text-red-500" colSpan={10}>Errore nel caricamento dei modelli.</td></tr>
               )}
               {!isLoading && !isError && ranked.map(({ model }) => {
                 const intel = lookupIntelligence(intelligenceMap, model.id);
@@ -366,11 +340,11 @@ export default function DashboardPage() {
                     </td>
                     <td className="px-3 py-2 space-x-1">
                       {model.flags.reasoning && <FlagBadge color="emerald">Reasoning</FlagBadge>}
-                      {model.flags.tools && <FlagBadge color="blue">Tools</FlagBadge>}
+                      {model.flags.tools    && <FlagBadge color="blue">Tools</FlagBadge>}
                       {model.flags.structured && <FlagBadge color="purple">Structured</FlagBadge>}
-                      {model.flags.vision && <FlagBadge color="amber">Vision</FlagBadge>}
-                      {model.flags.audio && <FlagBadge color="pink">Audio</FlagBadge>}
-                      {model.flags.file && <FlagBadge color="slate">File</FlagBadge>}
+                      {model.flags.vision   && <FlagBadge color="amber">Vision</FlagBadge>}
+                      {model.flags.audio    && <FlagBadge color="pink">Audio</FlagBadge>}
+                      {model.flags.file     && <FlagBadge color="slate">File</FlagBadge>}
                     </td>
                     <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">{model.knowledgeCutoff ?? "—"}</td>
                   </tr>
