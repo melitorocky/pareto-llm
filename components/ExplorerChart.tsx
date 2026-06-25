@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ComposedChart, XAxis, YAxis, Tooltip, Scatter, Legend, ZAxis, Label, Line,
+  ComposedChart, XAxis, YAxis, Tooltip, Scatter, Legend, ZAxis, Label, Line, ReferenceLine,
 } from "recharts";
 import { NormalizedModel } from "@/lib/types";
 import { IntelligenceMap, METRIC_OPTIONS, MetricKey, lookupIntelligence } from "@/lib/intelligence";
@@ -109,6 +109,30 @@ function buildStaircase(paretoPoints: Point[]): { x: number; y: number }[] {
   return line;
 }
 
+function CrosshairXLabel({ viewBox, text }: { viewBox?: { x: number; y: number; height: number }; text: string }) {
+  if (!viewBox) return null;
+  const { x, y, height } = viewBox;
+  const w = Math.max(text.length * 6.5 + 10, 28);
+  return (
+    <g>
+      <rect x={x - w / 2} y={y + height + 3} width={w} height={15} fill="#3b82f6" rx={2} />
+      <text x={x} y={y + height + 14} textAnchor="middle" fill="white" fontSize={10} fontWeight={600}>{text}</text>
+    </g>
+  );
+}
+
+function CrosshairYLabel({ viewBox, text }: { viewBox?: { x: number; y: number }; text: string }) {
+  if (!viewBox) return null;
+  const { x, y } = viewBox;
+  const w = Math.max(text.length * 6.5 + 10, 28);
+  return (
+    <g>
+      <rect x={x - w - 3} y={y - 8} width={w} height={15} fill="#3b82f6" rx={2} />
+      <text x={x - w / 2 - 3} y={y + 3} textAnchor="middle" fill="white" fontSize={10} fontWeight={600}>{text}</text>
+    </g>
+  );
+}
+
 function MetricSelect({
   label, value, onChange,
 }: { label: string; value: MetricKey; onChange: (v: MetricKey) => void }) {
@@ -135,6 +159,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
 
   const [xMetric, setXMetric] = useState<MetricKey>("costCombined");
   const [yMetric, setYMetric] = useState<MetricKey>("context");
+  const [hoveredPt, setHoveredPt] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -228,6 +253,12 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
             width={w}
             height={h}
             margin={{ top: 10, right: 20, bottom: 55, left: 70 }}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onMouseMove={(e: any) => {
+              const found = (e?.activePayload ?? []).find((p: any) => !!p?.payload?.name);
+              setHoveredPt(found ? { x: found.payload.x, y: found.payload.y } : null);
+            }}
+            onMouseLeave={() => setHoveredPt(null)}
           >
             <XAxis
               type="number"
@@ -292,6 +323,26 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 onClick={(pt: any) => onSelectModel?.(pt.id as string)}
                 style={{ cursor: onSelectModel ? "pointer" : "default" }}
+              />
+            )}
+            {hoveredPt && (
+              <ReferenceLine
+                x={hoveredPt.x}
+                stroke="#3b82f6"
+                strokeDasharray="4 2"
+                strokeOpacity={0.45}
+                strokeWidth={1}
+                label={<CrosshairXLabel text={formatAxisValue(hoveredPt.x, xMetric)} />}
+              />
+            )}
+            {hoveredPt && (
+              <ReferenceLine
+                y={hoveredPt.y}
+                stroke="#3b82f6"
+                strokeDasharray="4 2"
+                strokeOpacity={0.45}
+                strokeWidth={1}
+                label={<CrosshairYLabel text={formatAxisValue(hoveredPt.y, yMetric)} />}
               />
             )}
             {staircaseLine.length >= 2 && (
