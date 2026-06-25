@@ -30,7 +30,7 @@ async function fetchModels(noCache = false): Promise<NormalizedModel[]> {
   const res = await fetch(url);
   if (!res.ok) throw new Error("Errore caricamento modelli");
   const json = (await res.json()) as OpenRouterModelsResponse;
-  return (json.data || []).map(normalizeModel);
+  return (json.data || []).map(normalizeModel).filter(m => m.family !== "openrouter");
 }
 
 async function fetchIntelligence(): Promise<IntelligenceMap> {
