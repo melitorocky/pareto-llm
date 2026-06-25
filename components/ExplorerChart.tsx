@@ -257,8 +257,8 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
             <Tooltip
               cursor={{ strokeDasharray: "3 3" }}
               content={({ payload }) => {
-                const pt = payload?.[0]?.payload as Point | undefined;
-                if (!pt?.name) return null;
+                const pt = payload?.map(p => p.payload as Point).find(p => !!p?.name);
+                if (!pt) return null;
                 const xVal = formatAxisValue(pt.x, xMetric);
                 const yVal = formatAxisValue(pt.y, yMetric);
                 return (
