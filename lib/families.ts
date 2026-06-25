@@ -1,7 +1,10 @@
 import { NormalizedModel } from "./types";
 
 export function detectFamily(id: string): { key: string; label: string } {
-  const lower = id.toLowerCase();
+  // Some OpenRouter alias IDs are prefixed with "~" (e.g. "~anthropic/claude-opus-latest");
+  // strip it so they fold into the normal family instead of a separate "~anthropic" bucket.
+  const clean = id.replace(/^~/, "");
+  const lower = clean.toLowerCase();
   if (lower.startsWith("openai/")) return { key: "openai", label: "OpenAI" };
   if (lower.startsWith("anthropic/")) return { key: "anthropic", label: "Anthropic" };
   if (lower.startsWith("xai/") || lower.includes("/grok")) return { key: "grok", label: "Grok" };
@@ -10,7 +13,7 @@ export function detectFamily(id: string): { key: string; label: string } {
   if (lower.startsWith("mistral/")) return { key: "mistral", label: "Mistral" };
   if (lower.startsWith("qwen/")) return { key: "qwen", label: "Qwen" };
   if (lower.startsWith("deepseek/")) return { key: "deepseek", label: "DeepSeek" };
-  return { key: lower.split("/")[0] || "other", label: (id.split("/")[0] || "Altro") };
+  return { key: lower.split("/")[0] || "other", label: (clean.split("/")[0] || "Altro") };
 }
 
 export const HIGHLIGHT_FAMILIES = new Set(["openai", "anthropic", "grok", "google"]);
