@@ -77,11 +77,14 @@ export default function DashboardPage() {
   const models = data ?? [];
 
   const familiesAll = useMemo(() => {
-    const s = new Set<string>();
-    for (const m of models) s.add(m.family);
-    return Array.from(s.values()).sort((a, b) =>
-      a.replace(/^~/, "").localeCompare(b.replace(/^~/, ""))
-    );
+    const map = new Map<string, string>(); // key → label
+    for (const m of models) map.set(m.family, m.familyLabel);
+    return Array.from(map.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) =>
+        a.label.replace(/^~/, "").toLowerCase()
+          .localeCompare(b.label.replace(/^~/, "").toLowerCase())
+      );
   }, [models]);
 
   const filtered = useMemo(() => {
@@ -170,14 +173,14 @@ export default function DashboardPage() {
             <div className="flex gap-2 items-center flex-wrap">
               <span className="text-sm text-zinc-500 dark:text-zinc-400">Famiglie:</span>
               <div className="flex gap-1 flex-wrap">
-                {familiesAll.map(f => {
-                  const active = filters.families.includes(f);
+                {familiesAll.map(({ key, label }) => {
+                  const active = filters.families.includes(key);
                   return (
                     <button
-                      key={f}
+                      key={key}
                       onClick={() => {
                         const sel = new Set(filters.families);
-                        sel.has(f) ? sel.delete(f) : sel.add(f);
+                        sel.has(key) ? sel.delete(key) : sel.add(key);
                         setFilters({ ...filters, families: Array.from(sel) });
                       }}
                       className={`text-xs px-2 py-1 rounded-full border ${
@@ -186,7 +189,7 @@ export default function DashboardPage() {
                           : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300"
                       }`}
                     >
-                      {f}
+                      {label}
                     </button>
                   );
                 })}
