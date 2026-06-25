@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePersistentState } from "@/lib/persist";
 import {
   ComposedChart, XAxis, YAxis, Scatter, Legend, ZAxis, Label, Line, ReferenceLine,
 } from "recharts";
@@ -181,8 +182,8 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
   const [w, setW] = useState(0);
   const h = 360;
 
-  const [xMetric, setXMetric] = useState<MetricKey>("costCombined");
-  const [yMetric, setYMetric] = useState<MetricKey>("context");
+  const [xMetric, setXMetric] = usePersistentState<MetricKey>("chart_xMetric", "costCombined");
+  const [yMetric, setYMetric] = usePersistentState<MetricKey>("chart_yMetric", "context");
   const [hovered, setHovered] = useState<HoveredPt | null>(null);
 
   useEffect(() => {
