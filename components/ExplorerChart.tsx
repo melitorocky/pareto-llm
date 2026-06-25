@@ -22,9 +22,14 @@ type Point = {
   x: number;
   y: number;
   z: number;
+  labelIdx: number; // stack order among points sharing the exact same (x, y)
 };
 
 type HoveredPt = { x: number; y: number; name: string; family: string; cx: number; cy: number };
+
+// When the filtered set has at most this many points, show clickable name
+// labels next to each dot so overlapping models stay visible and selectable.
+const LABEL_THRESHOLD = 15;
 
 function getMetricValue(
   model: NormalizedModel,
@@ -199,17 +204,24 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
   const xOpt = METRIC_OPTIONS.find(o => o.key === xMetric)!;
   const yOpt = METRIC_OPTIONS.find(o => o.key === yMetric)!;
 
-  const points = useMemo<Point[]>(() => {
+  const { points, excludedX, excludedY } = useMemo(() => {
     const pts: Point[] = [];
+    const stack = new Map<string, number>(); // "x|y" -> count seen so far
+    let exX = 0, exY = 0; // models dropped because they lack the chosen-axis value
     for (const m of data) {
       const x = getMetricValue(m, intelligenceMap, xMetric);
       const y = getMetricValue(m, intelligenceMap, yMetric);
+      if (x == null) exX++;
+      if (y == null) exY++;
       if (x == null || y == null) continue;
       if (xOpt.scale === "log" && x <= 0) continue;
       if (yOpt.scale === "log" && y <= 0) continue;
-      pts.push({ id: m.id, name: m.name, family: m.family, x, y, z: isHighlightedFamily(m) ? 1 : 0 });
+      const key = `${x}|${y}`;
+      const idx = stack.get(key) ?? 0;
+      stack.set(key, idx + 1);
+      pts.push({ id: m.id, name: m.name, family: m.family, x, y, z: isHighlightedFamily(m) ? 1 : 0, labelIdx: idx });
     }
-    return pts;
+    return { points: pts, excludedX: exX, excludedY: exY };
   }, [data, intelligenceMap, xMetric, yMetric, xOpt.scale, yOpt.scale]);
 
   const highlightedSeries = useMemo(
@@ -248,23 +260,46 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
     return Array.from({ length: N }, (_, i) => min + (i / (N - 1)) * (max - min));
   }, [points, xOpt.scale]);
 
-  // Custom dot: fires onMouseEnter/onMouseLeave only when directly on the dot
+  // Show name labels next to dots when the filtered set is small enough.
+  const showLabels = points.length > 0 && points.length <= LABEL_THRESHOLD;
+
+  // Custom dot: fires onMouseEnter/onMouseLeave only when directly on the dot.
+  // When labels are enabled, also renders a clickable name beside the dot so
+  // overlapping models stay visible and selectable.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dot = useCallback((props: any) => {
     const { cx, cy, r, fill, stroke, payload } = props;
     if (cx == null || cy == null) return null;
+    const cursor = onSelectModel ? "pointer" : "default";
+    const nearRight = cx > w * 0.72;
+    const lx = nearRight ? cx - 9 : cx + 9;
+    const ly = cy + 4 + payload.labelIdx * 13; // stagger exact-overlap labels downward
+    const text = payload.name.length > 24 ? payload.name.slice(0, 23) + "…" : payload.name;
     return (
-      <circle
-        key={payload.id}
-        cx={cx} cy={cy} r={r ?? 5}
-        fill={fill} stroke={stroke} strokeWidth={1} fillOpacity={0.85}
-        style={{ cursor: onSelectModel ? "pointer" : "default" }}
-        onMouseEnter={() => setHovered({ x: payload.x, y: payload.y, name: payload.name, family: payload.family, cx, cy })}
-        onMouseLeave={() => setHovered(null)}
-        onClick={() => onSelectModel?.(payload.id)}
-      />
+      <g key={payload.id}>
+        <circle
+          cx={cx} cy={cy} r={r ?? 5}
+          fill={fill} stroke={stroke} strokeWidth={1} fillOpacity={0.85}
+          style={{ cursor }}
+          onMouseEnter={() => setHovered({ x: payload.x, y: payload.y, name: payload.name, family: payload.family, cx, cy })}
+          onMouseLeave={() => setHovered(null)}
+          onClick={() => onSelectModel?.(payload.id)}
+        />
+        {showLabels && (
+          <text
+            x={lx} y={ly}
+            textAnchor={nearRight ? "end" : "start"}
+            className="fill-current text-zinc-600 dark:text-zinc-300"
+            fontSize={11} fontWeight={500}
+            style={{ cursor }}
+            onClick={() => onSelectModel?.(payload.id)}
+          >
+            {text}
+          </text>
+        )}
+      </g>
     );
-  }, [onSelectModel]);
+  }, [onSelectModel, showLabels, w]);
 
   // Tooltip positioning: flip horizontally if near right edge
   const tipLeft = hovered ? (hovered.cx + 170 > w ? hovered.cx - 170 : hovered.cx + 14) : 0;
@@ -278,6 +313,14 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
         {points.length > 0 && (
           <span className="text-xs text-zinc-400 dark:text-zinc-500">
             {points.length} modelli con entrambi i dati disponibili
+          </span>
+        )}
+        {(excludedX > 0 || excludedY > 0) && (
+          <span className="text-xs text-amber-600 dark:text-amber-500">
+            {excludedX > 0 && `${excludedX} senza ${xOpt.label}`}
+            {excludedX > 0 && excludedY > 0 && " · "}
+            {excludedY > 0 && `${excludedY} senza ${yOpt.label}`}
+            {" "}nascosti
           </span>
         )}
       </div>
