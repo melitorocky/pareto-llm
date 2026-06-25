@@ -107,13 +107,19 @@ function formatTooltipValue(value: number, metric: MetricKey): string {
 // Domain with breathing room so low/extreme points don't sit on the axis line.
 // Linear axes start at 0 (as requested); log axes can't include 0, so they get
 // a multiplicative margin below the min and above the max.
-function axisDomain(values: number[], scale: "log" | "linear"): [number, number] | undefined {
+function axisDomain(values: number[], scale: "log" | "linear", metric: MetricKey): [number, number] | undefined {
   const vals = values.filter(v => isFinite(v) && (scale !== "log" || v > 0));
   if (vals.length === 0) return undefined;
   const min = Math.min(...vals);
   const max = Math.max(...vals);
   if (scale === "log") {
     return [min / 1.8, max * 1.8];
+  }
+  // Arena ELO values sit far from 0 (~1000–1400); starting at 0 would waste most
+  // of the axis, so pad around the data instead.
+  if (metric === "arenaElo") {
+    const pad = (max - min || max * 0.05) * 0.1;
+    return [Math.max(0, min - pad), max + pad];
   }
   return [0, max <= 0 ? 1 : max * 1.05];
 }
@@ -288,8 +294,8 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
     return Array.from({ length: N }, (_, i) => min + (i / (N - 1)) * (max - min));
   }, [points, xOpt.scale]);
 
-  const xDomain = useMemo(() => axisDomain(points.map(p => p.x), xOpt.scale), [points, xOpt.scale]);
-  const yDomain = useMemo(() => axisDomain(points.map(p => p.y), yOpt.scale), [points, yOpt.scale]);
+  const xDomain = useMemo(() => axisDomain(points.map(p => p.x), xOpt.scale, xMetric), [points, xOpt.scale, xMetric]);
+  const yDomain = useMemo(() => axisDomain(points.map(p => p.y), yOpt.scale, yMetric), [points, yOpt.scale, yMetric]);
 
   // Custom dot: fires onMouseEnter/onMouseLeave only when directly on the dot.
   // For points where several models share the exact same coordinate, a small
