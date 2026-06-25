@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ComposedChart, XAxis, YAxis, Tooltip, Scatter, Legend, ZAxis, Label, Line, ReferenceLine,
+  ComposedChart, XAxis, YAxis, Scatter, Legend, ZAxis, Label, Line, ReferenceLine,
 } from "recharts";
 import { NormalizedModel } from "@/lib/types";
 import { IntelligenceMap, METRIC_OPTIONS, MetricKey, lookupIntelligence } from "@/lib/intelligence";
 import { familyColor, HIGHLIGHT_FAMILIES, isHighlightedFamily } from "@/lib/families";
-import { formatPerM, formatContext } from "@/lib/normalize";
 
 type Props = {
   data: NormalizedModel[];
@@ -23,6 +22,8 @@ type Point = {
   y: number;
   z: number;
 };
+
+type HoveredPt = { x: number; y: number; name: string; family: string; cx: number; cy: number };
 
 function getMetricValue(
   model: NormalizedModel,
@@ -48,6 +49,7 @@ function getMetricValue(
   }
 }
 
+// Compact format for axis ticks and crosshair labels
 function formatAxisValue(value: number, metric: MetricKey): string {
   if (!isFinite(value)) return "";
   switch (metric) {
@@ -55,12 +57,12 @@ function formatAxisValue(value: number, metric: MetricKey): string {
     case "outPerM":
     case "costCombined":
       if (value === 0)    return "$0";
-      if (value < 0.001)  return `$${value.toExponential(0)}`;  // $1e-4
-      if (value < 0.01)   return `$${value.toFixed(3)}`;        // $0.003
-      if (value < 0.1)    return `$${value.toFixed(2)}`;        // $0.03
-      if (value < 1)      return `$${value.toFixed(1)}`;        // $0.3
+      if (value < 0.001)  return `$${value.toExponential(0)}`;
+      if (value < 0.01)   return `$${value.toFixed(3)}`;
+      if (value < 0.1)    return `$${value.toFixed(2)}`;
+      if (value < 1)      return `$${value.toFixed(1)}`;
       if (value >= 1000)  return `$${(value / 1000).toFixed(0)}K`;
-      return `$${value.toFixed(0)}`;                             // $5
+      return `$${value.toFixed(0)}`;
     case "context":
       if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(0)}M`;
       if (value >= 1000)      return `${(value / 1000).toFixed(0)}K`;
@@ -74,6 +76,30 @@ function formatAxisValue(value: number, metric: MetricKey): string {
   }
 }
 
+// Full-precision format for the hover tooltip popup
+function formatTooltipValue(value: number, metric: MetricKey): string {
+  if (!isFinite(value)) return "—";
+  switch (metric) {
+    case "inPerM":
+    case "outPerM":
+    case "costCombined":
+      if (value === 0) return "$0";
+      return `$${parseFloat(value.toPrecision(5))}`;
+    case "context":
+      return value.toLocaleString();
+    case "aaScore":
+      return value.toFixed(2);
+    case "arenaElo":
+      return value.toFixed(1);
+    case "aaSpeed":
+      return `${value.toFixed(1)} tok/s`;
+    case "aaLatency":
+      return `${value.toFixed(0)} ms`;
+    default:
+      return String(value);
+  }
+}
+
 function computeParetoFront(
   points: Point[],
   xHigherIsBetter: boolean,
@@ -84,7 +110,6 @@ function computeParetoFront(
     if (dominated.has(a.id)) continue;
     for (const b of points) {
       if (a.id === b.id || dominated.has(b.id)) continue;
-      // Does a dominate b?
       const aGeqX = xHigherIsBetter ? a.x >= b.x : a.x <= b.x;
       const aGeqY = yHigherIsBetter ? a.y >= b.y : a.y <= b.y;
       const aGtX  = xHigherIsBetter ? a.x >  b.x : a.x <  b.x;
@@ -95,7 +120,6 @@ function computeParetoFront(
   return new Set(points.filter(p => !dominated.has(p.id)).map(p => p.id));
 }
 
-// Builds the staircase polyline for the Pareto frontier, sorted by X ascending.
 function buildStaircase(paretoPoints: Point[]): { x: number; y: number }[] {
   if (paretoPoints.length === 0) return [];
   const sorted = [...paretoPoints].sort((a, b) => a.x - b.x);
@@ -159,7 +183,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
 
   const [xMetric, setXMetric] = useState<MetricKey>("costCombined");
   const [yMetric, setYMetric] = useState<MetricKey>("context");
-  const [hoveredPt, setHoveredPt] = useState<{ x: number; y: number } | null>(null);
+  const [hovered, setHovered] = useState<HoveredPt | null>(null);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -182,14 +206,7 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
       if (x == null || y == null) continue;
       if (xOpt.scale === "log" && x <= 0) continue;
       if (yOpt.scale === "log" && y <= 0) continue;
-      pts.push({
-        id: m.id,
-        name: m.name,
-        family: m.family,
-        x,
-        y,
-        z: isHighlightedFamily(m) ? 1 : 0,
-      });
+      pts.push({ id: m.id, name: m.name, family: m.family, x, y, z: isHighlightedFamily(m) ? 1 : 0 });
     }
     return pts;
   }, [data, intelligenceMap, xMetric, yMetric, xOpt.scale, yOpt.scale]);
@@ -230,11 +247,41 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
     return Array.from({ length: N }, (_, i) => min + (i / (N - 1)) * (max - min));
   }, [points, xOpt.scale]);
 
-  const emptyMsg = points.length === 0 ? (
-    <div className="flex items-center justify-center text-sm text-zinc-400" style={{ height: h }}>
-      Nessun dato disponibile per questa combinazione di metriche.
-    </div>
-  ) : null;
+  // Custom dot: fires onMouseEnter/onMouseLeave only when directly on the dot
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dot = useCallback((props: any) => {
+    const { cx, cy, r, fill, stroke, payload } = props;
+    if (cx == null || cy == null) return null;
+    return (
+      <circle
+        key={payload.id}
+        cx={cx} cy={cy} r={r ?? 5}
+        fill={fill} stroke={stroke} strokeWidth={1} fillOpacity={0.85}
+        style={{ cursor: onSelectModel ? "pointer" : "default" }}
+        onMouseEnter={() => setHovered({ x: payload.x, y: payload.y, name: payload.name, family: payload.family, cx, cy })}
+        onMouseLeave={() => setHovered(null)}
+        onClick={() => onSelectModel?.(payload.id)}
+      />
+    );
+  }, [onSelectModel]);
+
+  if (points.length === 0) {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-4 items-center">
+          <MetricSelect label="Asse X" value={xMetric} onChange={setXMetric} />
+          <MetricSelect label="Asse Y" value={yMetric} onChange={setYMetric} />
+        </div>
+        <div className="flex items-center justify-center text-sm text-zinc-400" style={{ height: h }}>
+          Nessun dato disponibile per questa combinazione di metriche.
+        </div>
+      </div>
+    );
+  }
+
+  // Tooltip positioning: flip horizontally if near right edge
+  const tipLeft = hovered ? (hovered.cx + 170 > w ? hovered.cx - 170 : hovered.cx + 14) : 0;
+  const tipTop  = hovered ? Math.max(4, hovered.cy - 56) : 0;
 
   return (
     <div className="space-y-3">
@@ -246,26 +293,12 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
         </span>
       </div>
 
-      <div ref={ref} className="w-full min-w-0" style={{ height: h }}>
-        {emptyMsg}
-        {!emptyMsg && w > 0 && (
-          <ComposedChart
-            width={w}
-            height={h}
-            margin={{ top: 10, right: 20, bottom: 55, left: 70 }}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            onMouseMove={(e: any) => {
-              const found = (e?.activePayload ?? []).find((p: any) => !!p?.payload?.name);
-              setHoveredPt(found ? { x: found.payload.x, y: found.payload.y } : null);
-            }}
-            onMouseLeave={() => setHoveredPt(null)}
-          >
+      <div ref={ref} className="relative w-full min-w-0" style={{ height: h }}>
+        {w > 0 && (
+          <ComposedChart width={w} height={h} margin={{ top: 10, right: 20, bottom: 55, left: 70 }}>
             <XAxis
-              type="number"
-              dataKey="x"
-              name={xOpt.label}
-              scale={xOpt.scale}
-              domain={["auto", "auto"]}
+              type="number" dataKey="x" name={xOpt.label}
+              scale={xOpt.scale} domain={["auto", "auto"]}
               tickFormatter={v => formatAxisValue(Number(v), xMetric)}
               tick={{ fontSize: 11, fill: "#6b7280", angle: -35, textAnchor: "end" }}
               ticks={xTicks}
@@ -273,11 +306,8 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
               <Label value={xOpt.label} position="bottom" offset={28} style={{ fontSize: 12, fill: "#6b7280" }} />
             </XAxis>
             <YAxis
-              type="number"
-              dataKey="y"
-              name={yOpt.label}
-              scale={yOpt.scale}
-              domain={["auto", "auto"]}
+              type="number" dataKey="y" name={yOpt.label}
+              scale={yOpt.scale} domain={["auto", "auto"]}
               tickFormatter={v => formatAxisValue(Number(v), yMetric)}
               tick={{ fontSize: 11, fill: "#6b7280" }}
               tickCount={Math.max(3, Math.min(6, Math.floor(h / 60)))}
@@ -285,84 +315,53 @@ export default function ExplorerChart({ data, intelligenceMap, onSelectModel }: 
               <Label value={yOpt.label} angle={-90} position="insideLeft" offset={-52} style={{ fontSize: 12, fill: "#6b7280" }} />
             </YAxis>
             <ZAxis type="number" dataKey="z" range={[55, 130]} />
-            <Tooltip
-              cursor={{ strokeDasharray: "3 3" }}
-              content={({ payload }) => {
-                const pt = payload?.map(p => p.payload as Point).find(p => !!p?.name);
-                if (!pt) return null;
-                const xVal = formatAxisValue(pt.x, xMetric);
-                const yVal = formatAxisValue(pt.y, yMetric);
-                return (
-                  <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs shadow-lg">
-                    <p className="font-semibold text-sm mb-1" style={{ color: familyColor(pt.family) }}>{pt.name}</p>
-                    <p className="text-zinc-500">{xOpt.label}: <span className="text-zinc-800 font-medium">{xVal}</span></p>
-                    <p className="text-zinc-500">{yOpt.label}: <span className="text-zinc-800 font-medium">{yVal}</span></p>
-                  </div>
-                );
-              }}
-            />
             <Legend />
             {highlightedSeries.map(({ fam, pts }) => (
-              <Scatter
-                key={fam}
-                name={fam}
-                data={pts}
-                fill={familyColor(fam)}
-                stroke={familyColor(fam)}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                onClick={(pt: any) => onSelectModel?.(pt.id as string)}
-                style={{ cursor: onSelectModel ? "pointer" : "default" }}
-              />
+              <Scatter key={fam} name={fam} data={pts} fill={familyColor(fam)} stroke={familyColor(fam)} shape={dot} />
             ))}
             {otherPts.length > 0 && (
-              <Scatter
-                name="altre"
-                data={otherPts}
-                fill="#9ca3af"
-                stroke="#9ca3af"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                onClick={(pt: any) => onSelectModel?.(pt.id as string)}
-                style={{ cursor: onSelectModel ? "pointer" : "default" }}
+              <Scatter name="altre" data={otherPts} fill="#9ca3af" stroke="#9ca3af" shape={dot} />
+            )}
+            {hovered && (
+              <ReferenceLine
+                x={hovered.x} stroke="#3b82f6" strokeDasharray="4 2" strokeOpacity={0.45} strokeWidth={1}
+                label={<CrosshairXLabel text={formatAxisValue(hovered.x, xMetric)} />}
               />
             )}
-            {hoveredPt && (
+            {hovered && (
               <ReferenceLine
-                x={hoveredPt.x}
-                stroke="#3b82f6"
-                strokeDasharray="4 2"
-                strokeOpacity={0.45}
-                strokeWidth={1}
-                label={<CrosshairXLabel text={formatAxisValue(hoveredPt.x, xMetric)} />}
-              />
-            )}
-            {hoveredPt && (
-              <ReferenceLine
-                y={hoveredPt.y}
-                stroke="#3b82f6"
-                strokeDasharray="4 2"
-                strokeOpacity={0.45}
-                strokeWidth={1}
-                label={<CrosshairYLabel text={formatAxisValue(hoveredPt.y, yMetric)} />}
+                y={hovered.y} stroke="#3b82f6" strokeDasharray="4 2" strokeOpacity={0.45} strokeWidth={1}
+                label={<CrosshairYLabel text={formatAxisValue(hovered.y, yMetric)} />}
               />
             )}
             {staircaseLine.length >= 2 && (
               <Line
-                data={staircaseLine}
-                dataKey="y"
-                dot={false}
-                activeDot={false}
-                stroke="#ef4444"
-                strokeWidth={2.5}
-                strokeDasharray="6 3"
-                strokeOpacity={0.8}
-                isAnimationActive={false}
-                name="Frontiera Pareto"
-                legendType="plainline"
+                data={staircaseLine} dataKey="y" dot={false} activeDot={false}
+                stroke="#ef4444" strokeWidth={2.5} strokeDasharray="6 3" strokeOpacity={0.8}
+                isAnimationActive={false} name="Frontiera Pareto" legendType="plainline"
               />
             )}
           </ComposedChart>
         )}
-        {!emptyMsg && w === 0 && <div style={{ height: h }} />}
+        {w === 0 && <div style={{ height: h }} />}
+
+        {/* Custom tooltip — shown only when directly on a dot */}
+        {hovered && (
+          <div
+            className="absolute z-10 pointer-events-none rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-xs shadow-lg"
+            style={{ left: tipLeft, top: tipTop }}
+          >
+            <p className="font-semibold text-sm mb-1" style={{ color: familyColor(hovered.family) }}>
+              {hovered.name}
+            </p>
+            <p className="text-zinc-500 dark:text-zinc-400">
+              {xOpt.label}: <span className="text-zinc-800 dark:text-zinc-200 font-medium">{formatTooltipValue(hovered.x, xMetric)}</span>
+            </p>
+            <p className="text-zinc-500 dark:text-zinc-400">
+              {yOpt.label}: <span className="text-zinc-800 dark:text-zinc-200 font-medium">{formatTooltipValue(hovered.y, yMetric)}</span>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
