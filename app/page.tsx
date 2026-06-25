@@ -79,7 +79,9 @@ export default function DashboardPage() {
   const familiesAll = useMemo(() => {
     const s = new Set<string>();
     for (const m of models) s.add(m.family);
-    return Array.from(s.values());
+    return Array.from(s.values()).sort((a, b) =>
+      a.replace(/^~/, "").localeCompare(b.replace(/^~/, ""))
+    );
   }, [models]);
 
   const filtered = useMemo(() => {
