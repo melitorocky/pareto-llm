@@ -25,18 +25,39 @@ type Filters = {
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
+function lsGet<T>(key: string): { ts: number; data: T } | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function lsSet(key: string, data: unknown) {
+  try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
 async function fetchModels(noCache = false): Promise<NormalizedModel[]> {
+  if (!noCache) {
+    const cached = lsGet<NormalizedModel[]>("cache_models");
+    if (cached && Date.now() - cached.ts < DAY_MS) return cached.data;
+  }
   const url = noCache ? "/api/models?noCache=1" : "/api/models";
   const res = await fetch(url);
   if (!res.ok) throw new Error("Errore caricamento modelli");
   const json = (await res.json()) as OpenRouterModelsResponse;
-  return (json.data || []).map(normalizeModel).filter(m => m.family !== "openrouter");
+  const models = (json.data || []).map(normalizeModel).filter(m => m.family !== "openrouter");
+  lsSet("cache_models", models);
+  return models;
 }
 
 async function fetchIntelligence(): Promise<IntelligenceMap> {
+  const cached = lsGet<IntelligenceMap>("cache_intelligence");
+  if (cached && Date.now() - cached.ts < DAY_MS) return cached.data;
   const res = await fetch("/api/intelligence");
   if (!res.ok) return {};
-  return res.json();
+  const data: IntelligenceMap = await res.json();
+  lsSet("cache_intelligence", data);
+  return data;
 }
 
 export default function DashboardPage() {
