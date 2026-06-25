@@ -111,22 +111,34 @@ export default function DashboardPage() {
   return (
     <>
       <div className="flex flex-col gap-6">
-        {/* Header */}
-        <header className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl font-semibold mr-auto dark:text-zinc-100">Pareto LLM Dashboard</h1>
+        {/* Utility bar */}
+        <div className="flex items-center justify-end gap-3">
+          <span className="text-xs text-zinc-400 dark:text-zinc-500 mr-auto">
+            Aggiornato: {lastUpdated}
+          </span>
           <ThemeToggle />
           <button
             onClick={async () => {
               await fetchModels(true);
               await Promise.all([refetch(), refetchIntelligence()]);
             }}
-            className="px-3 py-2 rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm hover:opacity-90"
+            className="px-3 py-1.5 rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm hover:opacity-90"
           >
             Aggiorna
           </button>
-          <div className="text-sm text-zinc-500 dark:text-zinc-400">
-            Ultimo aggiornamento: {lastUpdated}
-          </div>
+        </div>
+
+        {/* Hero */}
+        <header className="text-center space-y-3 py-4">
+          <h1 className="text-5xl font-extrabold tracking-tight dark:text-zinc-50">
+            Opencode{" "}
+            <span className="text-red-500">Assistant</span>
+          </h1>
+          <p className="text-lg text-zinc-500 dark:text-zinc-400 max-w-2xl mx-auto leading-relaxed">
+            Trova il modello AI ideale per programmare — confronta intelligenza, costo e velocità
+            su centinaia di LLM e scopri i migliori sulla{" "}
+            <span className="text-red-400 font-medium">frontiera di Pareto</span>.
+          </p>
         </header>
 
         {/* Filters — full width */}

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OpenRouter Pareto LLM",
+  title: "Opencode Assistant",
   description: "Dashboard pubblica dei modelli OpenRouter con grafici e consigli",
 };
 
